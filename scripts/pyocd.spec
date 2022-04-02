@@ -3,9 +3,10 @@
 import os
 import glob
 import platform
+from PyInstaller.compat import is_win as is_windows
 from PyInstaller.utils.hooks import (get_package_paths, collect_dynamic_libs)
 
-is_windows = (platform.system() == "Windows")
+# is_windows = (platform.system() == "Windows")
 
 block_cipher = None
 
@@ -63,7 +64,20 @@ else:
     cpm_lib_name = "_native__lib.so"
 cpm_libs = [(os.path.join(cpm_path, cpm_lib_name), "cmsis_pack_manager")]
 
-binaries = capstone_libs + cpm_libs
+libusb_path = get_package_paths('libusb_package')[1]
+if is_windows:
+    # Example: libusb-1.0.dll
+    print(libusb_path)
+    matches = glob.glob(os.path.join(libusb_path, "*.dll"))
+    if matches:
+        libusb_lib_name = matches[0]
+    else:
+        raise Exception("failed to find libusb dynamic library")
+    libusb_libs = [(os.path.join(libusb_path, libusb_lib_name), ".")]
+else:
+    libusb_libs = []
+
+binaries = capstone_libs + cpm_libs + libusb_libs
 
 a = Entrypoint('pyocd', 'console_scripts', 'pyocd',
                 binaries=binaries,
@@ -78,16 +92,38 @@ a = Entrypoint('pyocd', 'console_scripts', 'pyocd',
 
 pyz = PYZ(a.pure, a.zipped_data,
              cipher=block_cipher)
+#exe = EXE(pyz,
+#          a.scripts,
+#          a.binaries,
+#          a.zipfiles,
+#          a.datas,
+#          [],
+#          name='pyocd',
+#          debug=False,
+#          bootloader_ignore_signals=False,
+#          strip=False,
+#          upx=(not is_windows), # upx caused failures on windows
+#          runtime_tmpdir=None,
+#          console=True )
 exe = EXE(pyz,
           a.scripts,
-          a.binaries,
-          a.zipfiles,
-          a.datas,
           [],
+          exclude_binaries=True,
           name='pyocd',
           debug=False,
           bootloader_ignore_signals=False,
           strip=False,
-          upx=(not is_windows), # upx caused failures on windows
-          runtime_tmpdir=None,
-          console=True )
+          upx=True,
+          console=True,
+          disable_windowed_traceback=False,
+          target_arch=None,
+          codesign_identity=None,
+          entitlements_file=None )
+coll = COLLECT(exe,
+               a.binaries,
+               a.zipfiles,
+               a.datas,
+               strip=False,
+               upx=True,
+               upx_exclude=[],
+               name='pyocd')
